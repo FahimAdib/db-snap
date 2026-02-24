@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Prepare package metadata
+        run: |
+          node -e 'const fs=require("fs");const p="packaging/npm/package.json";const pkg=JSON.parse(fs.readFileSync(p,"utf8"));const ref=process.env.GITHUB_REF_NAME||"v0.1.0";pkg.version=ref.replace(/^v/,"");pkg.config=pkg.config||{};pkg.config.repo=process.env.GITHUB_REPOSITORY||pkg.config.repo;pkg.repository={type:"git",url:`git+https://github.com/${process.env.GITHUB_REPOSITORY}.git`};fs.writeFileSync(p,JSON.stringify(pkg,null,2)+"\n");'
+
+      - name: Publish npm package
+        working-directory: packaging/npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

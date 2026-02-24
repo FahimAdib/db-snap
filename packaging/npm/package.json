@@ -1,0 +1,35 @@
+{
+  "name": "db-snap",
+  "version": "0.1.0",
+  "description": "Installable db-snap CLI wrapper",
+  "bin": {
+    "db-snap": "bin/db-snap.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "files": [
+    "bin/db-snap.js",
+    "scripts/postinstall.js"
+  ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "config": {
+    "repo": "FahimAdib/db-snap"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FahimAdib/db-snap.git"
+  },
+  "license": "MIT"
+}
