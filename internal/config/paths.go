@@ -25,6 +25,8 @@ func EnsureLayout() error {
 		filepath.Join(base, "rules"),
 		filepath.Join(base, "snapshots"),
 		filepath.Join(base, "history"),
+		filepath.Join(base, "state"),
+		filepath.Join(base, "state", "active"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -80,4 +82,12 @@ func HistoryFile() (string, error) {
 		return "", err
 	}
 	return filepath.Join(base, "history", "events.jsonl"), nil
+}
+
+func ActiveSnapshotFile(profile string) (string, error) {
+	base, err := HomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "state", "active", profile+".json"), nil
 }

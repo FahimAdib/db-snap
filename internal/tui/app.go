@@ -73,12 +73,13 @@ type appModel struct {
 
 	tabs []string
 
-	profiles        []model.DBProfile
-	selectedProfile string
-	snapshots       []model.SnapshotManifest
-	rules           model.RulePack
-	history         []model.AuditEvent
-	policy          model.SafetyPolicy
+	profiles         []model.DBProfile
+	selectedProfile  string
+	snapshots        []model.SnapshotManifest
+	activeSnapshotID string
+	rules            model.RulePack
+	history          []model.AuditEvent
+	policy           model.SafetyPolicy
 
 	restoreOpts  model.RestoreOptions
 	restorePlan  *snapshot.RestorePlan
@@ -88,13 +89,14 @@ type appModel struct {
 }
 
 type loadedMsg struct {
-	profiles        []model.DBProfile
-	selectedProfile string
-	snapshots       []model.SnapshotManifest
-	rules           model.RulePack
-	history         []model.AuditEvent
-	policy          model.SafetyPolicy
-	err             error
+	profiles         []model.DBProfile
+	selectedProfile  string
+	snapshots        []model.SnapshotManifest
+	activeSnapshotID string
+	rules            model.RulePack
+	history          []model.AuditEvent
+	policy           model.SafetyPolicy
+	err              error
 }
 
 type opMsg struct {
@@ -178,6 +180,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.profiles = msg.profiles
 		m.selectedProfile = msg.selectedProfile
 		m.snapshots = msg.snapshots
+		m.activeSnapshotID = msg.activeSnapshotID
 		m.rules = msg.rules
 		m.history = msg.history
 		m.policy = msg.policy
@@ -711,6 +714,7 @@ func (m appModel) refreshCmd(preferred string) tea.Cmd {
 		}
 
 		snaps := []model.SnapshotManifest{}
+		activeSnapshotID := ""
 		rules := model.RulePack{Profile: sel, Rules: []model.ColumnRule{}}
 		if sel != "" {
 			snaps, err = config.ListSnapshots(sel)
@@ -718,6 +722,10 @@ func (m appModel) refreshCmd(preferred string) tea.Cmd {
 				return loadedMsg{err: err}
 			}
 			rules, err = config.LoadRulePack(sel)
+			if err != nil {
+				return loadedMsg{err: err}
+			}
+			activeSnapshotID, err = config.LoadActiveSnapshot(sel)
 			if err != nil {
 				return loadedMsg{err: err}
 			}
@@ -732,12 +740,13 @@ func (m appModel) refreshCmd(preferred string) tea.Cmd {
 			return loadedMsg{err: err}
 		}
 		return loadedMsg{
-			profiles:        profiles,
-			selectedProfile: sel,
-			snapshots:       snaps,
-			rules:           rules,
-			history:         h,
-			policy:          cfg.Policy,
+			profiles:         profiles,
+			selectedProfile:  sel,
+			snapshots:        snaps,
+			activeSnapshotID: activeSnapshotID,
+			rules:            rules,
+			history:          h,
+			policy:           cfg.Policy,
 		}
 	}
 }
@@ -853,6 +862,9 @@ func (m appModel) renderSnapshots() string {
 	} else {
 		for i, s := range m.snapshots {
 			line := fmt.Sprintf("%s  %s  tags=[%s]", s.ID, s.CreatedAt.Format(time.RFC3339), strings.Join(s.Tags, ","))
+			if s.ID == m.activeSnapshotID {
+				line += "  [ACTIVE]"
+			}
 			if i == m.cursor {
 				b.WriteString(snapshotActiveStyle.Render(line) + "\n")
 			} else {
