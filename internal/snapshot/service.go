@@ -280,6 +280,7 @@ func (s Service) Restore(ctx context.Context, opts model.RestoreOptions, prompt 
 			return err
 		}
 		_ = history.Append(model.AuditEvent{ID: uuid.NewString(), Type: "snapshot.restore", Profile: p.Name, Snapshot: opts.SnapshotID, CreatedAt: time.Now().UTC(), Status: "success", Details: map[string]string{"mode": "fast"}})
+		_ = config.SaveActiveSnapshot(p.Name, opts.SnapshotID)
 		return nil
 	}
 
@@ -359,6 +360,7 @@ func (s Service) Restore(ctx context.Context, opts model.RestoreOptions, prompt 
 		return err
 	}
 	_ = history.Append(model.AuditEvent{ID: uuid.NewString(), Type: "snapshot.restore", Profile: p.Name, Snapshot: opts.SnapshotID, CreatedAt: time.Now().UTC(), Status: "success", Details: map[string]string{"mode": "adaptive"}})
+	_ = config.SaveActiveSnapshot(p.Name, opts.SnapshotID)
 	return nil
 }
 

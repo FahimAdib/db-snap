@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"db-snap/internal/model"
 	"gopkg.in/yaml.v3"
@@ -259,6 +260,50 @@ func ListSnapshots(profile string) ([]model.SnapshotManifest, error) {
 		return out[i].CreatedAt.After(out[j].CreatedAt)
 	})
 	return out, nil
+}
+
+type activeSnapshotState struct {
+	Profile    string    `json:"profile"`
+	SnapshotID string    `json:"snapshotId"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+func SaveActiveSnapshot(profile, snapshotID string) error {
+	if err := EnsureLayout(); err != nil {
+		return err
+	}
+	f, err := ActiveSnapshotFile(profile)
+	if err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(activeSnapshotState{
+		Profile:    profile,
+		SnapshotID: snapshotID,
+		UpdatedAt:  time.Now().UTC(),
+	}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(f, b, 0o644)
+}
+
+func LoadActiveSnapshot(profile string) (string, error) {
+	f, err := ActiveSnapshotFile(profile)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(f)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	var s activeSnapshotState
+	if err := json.Unmarshal(b, &s); err != nil {
+		return "", err
+	}
+	return s.SnapshotID, nil
 }
 
 func DeleteSnapshot(profile, id string) error {
