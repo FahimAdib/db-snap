@@ -106,24 +106,25 @@ type opMsg struct {
 }
 
 var (
-	bgStyle           = lipgloss.NewStyle().Background(lipgloss.Color("#282828")).Foreground(lipgloss.Color("#ebdbb2"))
-	headerStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836")).Padding(0, 1)
-	sidebarBaseStyle  = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Width(24).Background(lipgloss.Color("#282828"))
-	sidebarFocusStyle = sidebarBaseStyle.Copy().BorderForeground(lipgloss.Color("#fabd2f"))
-	sidebarBlurStyle  = sidebarBaseStyle.Copy().BorderForeground(lipgloss.Color("#665c54"))
-	panelBaseStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Background(lipgloss.Color("#282828"))
-	panelFocusStyle   = panelBaseStyle.Copy().BorderForeground(lipgloss.Color("#fabd2f"))
-	panelBlurStyle    = panelBaseStyle.Copy().BorderForeground(lipgloss.Color("#665c54"))
-	footerStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#a89984")).Padding(0, 1)
-	tabActiveStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true).Padding(0, 1)
-	tabIdleStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#d5c4a1")).Padding(0, 1)
-	rowActiveStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#504945")).Padding(0, 1)
-	rowIdleStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#d5c4a1")).Padding(0, 1)
-	sectionStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fabd2f"))
-	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
-	statusBusyStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#8ec07c"))
-	modalStyle        = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("#d3869b")).Background(lipgloss.Color("#3c3836")).Padding(1).Width(90)
-	focusedLabelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#8ec07c")).Bold(true)
+	bgStyle             = lipgloss.NewStyle().Background(lipgloss.Color("#282828")).Foreground(lipgloss.Color("#ebdbb2"))
+	headerStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#3c3836")).Padding(0, 1)
+	sidebarBaseStyle    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Width(24).Background(lipgloss.Color("#282828"))
+	sidebarFocusStyle   = sidebarBaseStyle.Copy().BorderForeground(lipgloss.Color("#fabd2f"))
+	sidebarBlurStyle    = sidebarBaseStyle.Copy().BorderForeground(lipgloss.Color("#665c54"))
+	panelBaseStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(1).Background(lipgloss.Color("#282828"))
+	panelFocusStyle     = panelBaseStyle.Copy().BorderForeground(lipgloss.Color("#fabd2f"))
+	panelBlurStyle      = panelBaseStyle.Copy().BorderForeground(lipgloss.Color("#665c54"))
+	footerStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#a89984")).Padding(0, 1)
+	tabActiveStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#83a598")).Bold(true).Padding(0, 1)
+	tabIdleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#d5c4a1")).Padding(0, 1)
+	rowActiveStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("#ebdbb2")).Background(lipgloss.Color("#504945")).Padding(0, 1)
+	snapshotActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#282828")).Background(lipgloss.Color("#fabd2f")).Bold(true).Padding(0, 1)
+	rowIdleStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("#d5c4a1")).Padding(0, 1)
+	sectionStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#fabd2f"))
+	errorStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("#fb4934")).Bold(true)
+	statusBusyStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#8ec07c"))
+	modalStyle          = lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(lipgloss.Color("#d3869b")).Background(lipgloss.Color("#3c3836")).Padding(1).Width(90)
+	focusedLabelStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#8ec07c")).Bold(true)
 )
 
 func Run(version string, svc snapshot.Service) error {
@@ -853,7 +854,7 @@ func (m appModel) renderSnapshots() string {
 		for i, s := range m.snapshots {
 			line := fmt.Sprintf("%s  %s  tags=[%s]", s.ID, s.CreatedAt.Format(time.RFC3339), strings.Join(s.Tags, ","))
 			if i == m.cursor {
-				b.WriteString(rowActiveStyle.Render(line) + "\n")
+				b.WriteString(snapshotActiveStyle.Render(line) + "\n")
 			} else {
 				b.WriteString(rowIdleStyle.Render(line) + "\n")
 			}
