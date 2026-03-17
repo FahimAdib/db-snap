@@ -13,6 +13,7 @@ import (
 func newSnapshotCommand(svc snapshot.Service) *cobra.Command {
 	cmd := &cobra.Command{Use: "snapshot", Short: "Manage snapshots"}
 	cmd.AddCommand(newSnapshotCreateCommand(svc))
+	cmd.AddCommand(newSnapshotUpdateCommand(svc))
 	cmd.AddCommand(newSnapshotListCommand())
 	cmd.AddCommand(newSnapshotShowCommand())
 	cmd.AddCommand(newSnapshotDeleteCommand())
@@ -43,6 +44,28 @@ func newSnapshotCreateCommand(svc snapshot.Service) *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.IncludeTables, "include-table", nil, "Include table(s)")
 	cmd.Flags().StringSliceVar(&opts.ExcludeTables, "exclude-table", nil, "Exclude table(s)")
 	cmd.Flags().BoolVar(&opts.Deterministic, "deterministic", false, "Deterministic mode")
+	_ = cmd.MarkFlagRequired("profile")
+	return cmd
+}
+
+func newSnapshotUpdateCommand(svc snapshot.Service) *cobra.Command {
+	var profile string
+	cmd := &cobra.Command{
+		Use:   "update <snapshot-id>",
+		Short: "Update snapshot in place",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Hour)
+			defer cancel()
+			m, err := svc.Update(ctx, profile, args[0])
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "snapshot updated: %s\n", m.ID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&profile, "profile", "", "Profile name")
 	_ = cmd.MarkFlagRequired("profile")
 	return cmd
 }

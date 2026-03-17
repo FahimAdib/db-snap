@@ -361,6 +361,21 @@ func (m appModel) handleSnapshotsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c", "a":
 		m.activeForm = m.newSnapshotCreateForm()
 		return m, nil
+	case "u":
+		s := m.currentSnapshot()
+		if s == nil {
+			return m, nil
+		}
+		m.busy = true
+		return m, m.runOp(func() opMsg {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+			defer cancel()
+			item, err := m.svc.Update(ctx, m.selectedProfile, s.ID)
+			if err != nil {
+				return opMsg{status: "snapshot update failed", err: err}
+			}
+			return opMsg{status: "snapshot updated: " + item.ID, refresh: true}
+		})
 	case "d", "x":
 		s := m.currentSnapshot()
 		if s == nil {
@@ -388,7 +403,7 @@ func (m appModel) handleSnapshotsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "i":
 		m.activeForm = m.newSnapshotImportForm()
 		return m, nil
-	case "u":
+	case "m":
 		m.restoreOpts.AutoFill = !m.restoreOpts.AutoFill
 		return m, nil
 	case "y":
@@ -874,12 +889,12 @@ func (m appModel) renderSnapshots() string {
 	}
 	b.WriteString("\n")
 	b.WriteString(sectionStyle.Render("Restore options") + "\n")
-	b.WriteString(fmt.Sprintf("Auto-fill (u): %v\n", m.restoreOpts.AutoFill))
+	b.WriteString(fmt.Sprintf("Auto-fill (m): %v\n", m.restoreOpts.AutoFill))
 	b.WriteString(fmt.Sprintf("Dry-run (y): %v\n", m.restoreOpts.DryRun))
 	b.WriteString(fmt.Sprintf("Force unsafe/private (f): %v\n", m.restoreOpts.ForceUnsafe))
 	b.WriteString(fmt.Sprintf("Truncate before restore (t): %v\n", m.restoreOpts.TruncateBefore))
-	b.WriteString("\nSnapshot actions: a create • e edit tags • x delete • o export • i import\n")
-	b.WriteString("Restore actions: u toggle autofill • y dry-run • f force • t truncate • space plan • enter restore\n")
+	b.WriteString("\nSnapshot actions: a create • u update • e edit tags • x delete • o export • i import\n")
+	b.WriteString("Restore actions: m toggle autofill • y dry-run • f force • t truncate • space plan • enter restore\n")
 	if m.restorePlan != nil {
 		b.WriteString("\n")
 		b.WriteString(sectionStyle.Render("Latest plan") + "\n")

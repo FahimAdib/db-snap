@@ -27,6 +27,7 @@ import (
 	"db-snap/internal/policy"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Service struct {
@@ -50,6 +51,18 @@ type RestorePlan struct {
 }
 
 type PromptFunc func([]model.ColumnSummary) (map[string]string, error)
+
+type snapshotPersistSpec struct {
+	ID            string
+	CreatedAt     time.Time
+	Tags          []string
+	IncludeTables []string
+	ExcludeTables []string
+	Deterministic bool
+	Metadata      map[string]string
+	AuditEvent    string
+	LogFileName   string
+}
 
 var insertRegex = regexp.MustCompile(`(?is)^insert\s+into\s+((?:"[^"]+"|[a-zA-Z0-9_]+)\.)?((?:"[^"]+"|[a-zA-Z0-9_]+))\s*\((.+)\)\s*values\s*\((.+)\);?$`)
 
@@ -110,31 +123,62 @@ func (s Service) Import(profile, srcFile string) (string, error) {
 }
 
 func (s Service) Create(ctx context.Context, opts CreateOptions) (model.SnapshotManifest, error) {
-	if opts.Profile == "" {
-		return model.SnapshotManifest{}, errors.New("profile is required")
-	}
-	if err := config.EnsureLayout(); err != nil {
-		return model.SnapshotManifest{}, err
-	}
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return model.SnapshotManifest{}, err
-	}
-	p, err := config.LoadProfile(opts.Profile)
-	if err != nil {
-		return model.SnapshotManifest{}, err
-	}
-	if _, err := policy.ValidateTarget(p.Host, cfg.Policy); err != nil {
-		return model.SnapshotManifest{}, err
-	}
-
-	password, _ := config.LoadPassword(p.Name)
-	pool, err := db.OpenPool(ctx, p, password)
+	p, pool, password, err := s.loadSnapshotTarget(ctx, opts.Profile)
 	if err != nil {
 		return model.SnapshotManifest{}, err
 	}
 	defer pool.Close()
 
+	return s.captureSnapshot(ctx, pool, p, password, newSnapshotCreateSpec(opts))
+}
+
+func (s Service) Update(ctx context.Context, profile, snapshotID string) (model.SnapshotManifest, error) {
+	if profile == "" {
+		return model.SnapshotManifest{}, errors.New("profile is required")
+	}
+	if snapshotID == "" {
+		return model.SnapshotManifest{}, errors.New("snapshot id is required")
+	}
+	existing, err := config.LoadManifest(profile, snapshotID)
+	if err != nil {
+		return model.SnapshotManifest{}, err
+	}
+	p, pool, password, err := s.loadSnapshotTarget(ctx, profile)
+	if err != nil {
+		return model.SnapshotManifest{}, err
+	}
+	defer pool.Close()
+
+	return s.captureSnapshot(ctx, pool, p, password, newSnapshotUpdateSpec(existing))
+}
+
+func (s Service) loadSnapshotTarget(ctx context.Context, profile string) (model.DBProfile, *pgxpool.Pool, string, error) {
+	if profile == "" {
+		return model.DBProfile{}, nil, "", errors.New("profile is required")
+	}
+	if err := config.EnsureLayout(); err != nil {
+		return model.DBProfile{}, nil, "", err
+	}
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return model.DBProfile{}, nil, "", err
+	}
+	p, err := config.LoadProfile(profile)
+	if err != nil {
+		return model.DBProfile{}, nil, "", err
+	}
+	if _, err := policy.ValidateTarget(p.Host, cfg.Policy); err != nil {
+		return model.DBProfile{}, nil, "", err
+	}
+	password, _ := config.LoadPassword(p.Name)
+	pool, err := db.OpenPool(ctx, p, password)
+	if err != nil {
+		return model.DBProfile{}, nil, "", err
+	}
+	return p, pool, password, nil
+}
+
+func (s Service) captureSnapshot(ctx context.Context, pool *pgxpool.Pool, p model.DBProfile, password string, spec snapshotPersistSpec) (model.SnapshotManifest, error) {
 	sf, hash, err := db.CaptureSchemaFingerprint(ctx, pool)
 	if err != nil {
 		return model.SnapshotManifest{}, err
@@ -144,8 +188,7 @@ func (s Service) Create(ctx context.Context, opts CreateOptions) (model.Snapshot
 		return model.SnapshotManifest{}, err
 	}
 
-	id := time.Now().UTC().Format("20060102T150405Z") + "-" + uuid.NewString()[:8]
-	dir, err := config.SnapshotDir(p.Name, id)
+	dir, err := config.SnapshotDir(p.Name, spec.ID)
 	if err != nil {
 		return model.SnapshotManifest{}, err
 	}
@@ -154,7 +197,7 @@ func (s Service) Create(ctx context.Context, opts CreateOptions) (model.Snapshot
 	}
 
 	dumpPath := filepath.Join(dir, "dump.archive")
-	logPath := filepath.Join(dir, "logs", "create.log")
+	logPath := filepath.Join(dir, "logs", spec.LogFileName)
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return model.SnapshotManifest{}, err
@@ -162,10 +205,10 @@ func (s Service) Create(ctx context.Context, opts CreateOptions) (model.Snapshot
 	defer logFile.Close()
 
 	args := []string{"--format=custom", "--data-only", "--column-inserts", "--no-owner", "--no-privileges", "--file", dumpPath, "--dbname", db.ConnString(p, password)}
-	for _, t := range opts.IncludeTables {
+	for _, t := range spec.IncludeTables {
 		args = append(args, "-t", t)
 	}
-	for _, t := range opts.ExcludeTables {
+	for _, t := range spec.ExcludeTables {
 		args = append(args, "-T", t)
 	}
 	cmd := exec.CommandContext(ctx, "pg_dump", args...)
@@ -179,34 +222,62 @@ func (s Service) Create(ctx context.Context, opts CreateOptions) (model.Snapshot
 	if err != nil {
 		return model.SnapshotManifest{}, err
 	}
-
-	if err := config.SaveSchemaFingerprint(p.Name, id, sf); err != nil {
+	if err := config.SaveSchemaFingerprint(p.Name, spec.ID, sf); err != nil {
 		return model.SnapshotManifest{}, err
 	}
 
 	dbVersion, _ := db.DBVersion(ctx, pool)
 	m := model.SnapshotManifest{
-		ID:                 id,
+		ID:                 spec.ID,
 		Profile:            p.Name,
-		CreatedAt:          time.Now().UTC(),
+		CreatedAt:          spec.CreatedAt,
 		DBVersion:          dbVersion,
 		AppVersion:         s.AppVersion,
 		DataArchive:        "dump.archive",
 		SchemaFingerprint:  hash,
 		SnapshotChecksum:   checksum,
-		Tags:               opts.Tags,
+		Tags:               cloneStrings(spec.Tags),
 		TableRowCounts:     counts,
-		FilteredTables:     opts.IncludeTables,
-		ExcludedTables:     opts.ExcludeTables,
-		DeterministicOrder: opts.Deterministic,
-		Metadata:           opts.Metadata,
+		FilteredTables:     cloneStrings(spec.IncludeTables),
+		ExcludedTables:     cloneStrings(spec.ExcludeTables),
+		DeterministicOrder: spec.Deterministic,
+		Metadata:           cloneStringMap(spec.Metadata),
 	}
 	if err := config.SaveManifest(p.Name, m); err != nil {
 		return model.SnapshotManifest{}, err
 	}
 	_ = os.WriteFile(filepath.Join(dir, "checksums.sha256"), []byte(fmt.Sprintf("%s  %s\n", checksum, "dump.archive")), 0o644)
-	_ = history.Append(model.AuditEvent{ID: uuid.NewString(), Type: "snapshot.create", Profile: p.Name, Snapshot: m.ID, CreatedAt: time.Now().UTC(), Status: "success"})
+	_ = history.Append(model.AuditEvent{ID: uuid.NewString(), Type: spec.AuditEvent, Profile: p.Name, Snapshot: m.ID, CreatedAt: time.Now().UTC(), Status: "success"})
 	return m, nil
+}
+
+func newSnapshotCreateSpec(opts CreateOptions) snapshotPersistSpec {
+	createdAt := time.Now().UTC()
+	return snapshotPersistSpec{
+		ID:            createdAt.Format("20060102T150405Z") + "-" + uuid.NewString()[:8],
+		CreatedAt:     createdAt,
+		Tags:          cloneStrings(opts.Tags),
+		IncludeTables: cloneStrings(opts.IncludeTables),
+		ExcludeTables: cloneStrings(opts.ExcludeTables),
+		Deterministic: opts.Deterministic,
+		Metadata:      cloneStringMap(opts.Metadata),
+		AuditEvent:    "snapshot.create",
+		LogFileName:   "create.log",
+	}
+}
+
+func newSnapshotUpdateSpec(existing model.SnapshotManifest) snapshotPersistSpec {
+	return snapshotPersistSpec{
+		ID:            existing.ID,
+		CreatedAt:     existing.CreatedAt,
+		Tags:          cloneStrings(existing.Tags),
+		IncludeTables: cloneStrings(existing.FilteredTables),
+		ExcludeTables: cloneStrings(existing.ExcludedTables),
+		Deterministic: existing.DeterministicOrder,
+		Metadata:      cloneStringMap(existing.Metadata),
+		AuditEvent:    "snapshot.update",
+		LogFileName:   "update.log",
+	}
 }
 
 func (s Service) PlanRestore(ctx context.Context, profile, snapshotID string) (RestorePlan, error) {
@@ -634,4 +705,24 @@ func copyDir(src, dst string) error {
 		}
 		return os.WriteFile(target, b, info.Mode())
 	})
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }

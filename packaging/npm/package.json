@@ -1,6 +1,6 @@
 {
   "name": "@fahimadib01/db-snap",
-  "version": "0.1.0",
+  "version": "0.1.6",
   "description": "Installable db-snap CLI wrapper",
   "bin": {
     "db-snap": "bin/db-snap.js"
